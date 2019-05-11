@@ -2,6 +2,7 @@
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -22,7 +23,7 @@ namespace GetAzureCosts
         {
             if (args.Length != 8)
             {
-                Console.WriteLine("Usage: <tenantId> <clientId> <clientSecret> <startDate> <endDate> <elasticUrl> <elasticUsername> <elasticPassword>");
+                Log("Usage: <tenantId> <clientId> <clientSecret> <startDate> <endDate> <elasticUrl> <elasticUsername> <elasticPassword>", ConsoleColor.Red);
                 return;
             }
 
@@ -35,7 +36,11 @@ namespace GetAzureCosts
             string elasticUsername = args[6];
             string elasticPassword = args[7];
 
+            var watch = Stopwatch.StartNew();
+
             await DoStuff(tenantId, clientId, clientSecret, startDate, endDate, elasticUrl, elasticUsername, elasticPassword);
+
+            Log($"Done: {watch.Elapsed}", ConsoleColor.Green);
         }
 
         static async Task DoStuff(string tenantId, string clientId, string clientSecret, DateTime startDate, DateTime endDate, string elasticUrl, string elasticUsername, string elasticPassword)
@@ -45,12 +50,12 @@ namespace GetAzureCosts
             if (startDate >= today)
             {
                 startDate = today.AddDays(-1);
-                Console.WriteLine($"start date cannot be today or in the future, instead using yesterday ({startDate.ToString("yyyy-MM-dd")}).");
+                Log($"start date cannot be today or in the future, instead using yesterday ({startDate.ToString("yyyy-MM-dd")}).");
             }
             if (endDate > today)
             {
                 endDate = today;
-                Console.WriteLine($"end date cannot be in the future, instead using today ({endDate.ToString("yyyy-MM-dd")}).");
+                Log($"end date cannot be in the future, instead using today ({endDate.ToString("yyyy-MM-dd")}).");
             }
 
             JArray rates, usages;
@@ -63,7 +68,7 @@ namespace GetAzureCosts
             else
             {
                 string accessToken = await GetAzureAccessTokensAsync(tenantId, clientId, clientSecret);
-                //Console.WriteLine($"AccessToken: '{accessToken}'");
+                //Log($"AccessToken: '{accessToken}'");
 
                 using (var client = new HttpClient())
                 {
@@ -86,11 +91,11 @@ namespace GetAzureCosts
         {
             string getSubscriptionsUrl = "/subscriptions?api-version=2016-06-01";
 
-            Console.WriteLine($"Getting: '{getSubscriptionsUrl}'");
+            Log($"Getting: '{getSubscriptionsUrl}'");
             dynamic result = await GetHttpStringAsync(client, getSubscriptionsUrl);
             JArray subscriptions = result.value;
 
-            Console.WriteLine($"Found {subscriptions.Count} subscriptions.");
+            Log($"Found {subscriptions.Count} subscriptions.");
 
             return subscriptions;
         }
@@ -108,7 +113,7 @@ namespace GetAzureCosts
                 string filter = "OfferDurableId eq 'MS-AZR-0121p' and Currency eq 'SEK' and Locale eq 'en-US' and RegionInfo eq 'SE'";
                 string getCostsUrl = $"{subscriptionId}/providers/Microsoft.Commerce/RateCard?api-version=2016-08-31-preview&$filter={filter}";
 
-                Console.WriteLine($"Getting: '{getCostsUrl}'");
+                Log($"Getting: '{getCostsUrl}'");
                 dynamic result = await GetHttpStringAsync(client, getCostsUrl);
                 if (result == null)
                 {
@@ -116,9 +121,9 @@ namespace GetAzureCosts
                 }
 
                 JArray offerTerms = result.OfferTerms;
-                Console.WriteLine($"{subscriptionName}: Found {offerTerms.Count} OfferTerms.");
+                Log($"{subscriptionName}: Found {offerTerms.Count} OfferTerms.");
                 JArray meters = result.Meters;
-                Console.WriteLine($"{subscriptionName}: Found {meters.Count} Meters.");
+                Log($"{subscriptionName}: Found {meters.Count} Meters.");
 
                 foreach (var meter in result.Meters)
                 {
@@ -143,7 +148,7 @@ namespace GetAzureCosts
 
                 for (int page = 1; getCostsUrl != null; page++)
                 {
-                    Console.WriteLine($"Getting: '{getCostsUrl}'");
+                    Log($"Getting: '{getCostsUrl}'");
                     dynamic result = await GetHttpStringAsync(client, getCostsUrl);
                     if (result != null && result.value != null && result.value.Count > 0)
                     {
@@ -164,7 +169,7 @@ namespace GetAzureCosts
                     {
                         if (usages.Count == 0)
                         {
-                            Console.WriteLine("Got no values.");
+                            Log("Got no values.");
                         }
 
                         getCostsUrl = null;
@@ -222,8 +227,8 @@ namespace GetAzureCosts
                 .OrderByDescending(r => double.Parse(r.Name, CultureInfo.InvariantCulture))
                 .FirstOrDefault();
 
-            //Console.WriteLine($">>>{rateEntry}<<<");
-            //Console.WriteLine($">>>{rateEntry.Value}<<<");
+            //Log($">>>{rateEntry}<<<");
+            //Log($">>>{rateEntry.Value}<<<");
 
             double d = rateEntry.Value.ToObject<double>();
 
@@ -275,7 +280,7 @@ namespace GetAzureCosts
                 }
                 catch (HttpRequestException ex)
                 {
-                    Console.WriteLine($"Couldn't get access token for client {ex.Message}");
+                    Log($"Couldn't get access token for client {ex.Message}");
                     throw;
                 }
             }
@@ -292,8 +297,8 @@ namespace GetAzureCosts
             }
             catch (HttpRequestException ex)
             {
-                Console.WriteLine(ex.Message);
-                Console.WriteLine($"Result: '{result}'");
+                Log(ex.Message);
+                Log($"Result: '{result}'");
                 return null;
             }
 
@@ -325,6 +330,25 @@ namespace GetAzureCosts
             }
 
             return null;
+        }
+
+        static void Log(string message, ConsoleColor color)
+        {
+            var oldColor = Console.ForegroundColor;
+            try
+            {
+                Console.ForegroundColor = color;
+                Console.WriteLine(message);
+            }
+            finally
+            {
+                Console.ForegroundColor = oldColor;
+            }
+        }
+
+        static void Log(string message)
+        {
+            Console.WriteLine(message);
         }
     }
 }
