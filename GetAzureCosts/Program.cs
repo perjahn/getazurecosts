@@ -58,11 +58,15 @@ namespace GetAzureCosts
                 Log($"end date cannot be in the future, instead using today ({endDate.ToString("yyyy-MM-dd")}).");
             }
 
-            JArray rates, usages;
+            JArray subscriptions, rates, usages;
 
-            if (File.Exists("rates.json") && File.Exists("usages.json"))
+            if (File.Exists("subscriptions.json") && File.Exists("rates.json") && File.Exists("usages.json"))
             {
+                Log("Reading: 'subscriptions.json'");
+                subscriptions = JArray.Parse(File.ReadAllText("subscriptions.json"));
+                Log("Reading: 'rates.json'");
                 rates = JArray.Parse(File.ReadAllText("rates.json"));
+                Log("Reading: 'usages.json'");
                 usages = JArray.Parse(File.ReadAllText("usages.json"));
             }
             else
@@ -76,15 +80,119 @@ namespace GetAzureCosts
                     client.BaseAddress = new Uri("https://management.azure.com");
                     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-                    var subscriptions = await GetSubscriptions(client);
+                    subscriptions = await GetSubscriptions(client);
                     rates = await GetRates(client, subscriptions);
                     usages = await GetUsages(client, subscriptions, startDate, endDate);
                 }
             }
 
+            var subscriptionNames = GetSubscriptionNames(subscriptions);
+
+            Log($"Got {rates.Count} rates.");
+            Log($"Got {usages.Count} usages.");
+
+            AddSubscriptionNames(usages, subscriptionNames);
+
             var costs = CalculateCosts(rates, usages);
 
+            File.WriteAllText("subscriptions.json", subscriptions.ToString());
+            File.WriteAllText("rates.json", rates.ToString());
+            File.WriteAllText("usages.json", usages.ToString());
+
             await SaveToElastic(elasticUrl, elasticUsername, elasticPassword, costs);
+        }
+
+        static Dictionary<string, string> GetSubscriptionNames(JArray subscriptions)
+        {
+            var subscriptionNames = new Dictionary<string, string>();
+
+            foreach (dynamic subscription in subscriptions)
+            {
+                string id = subscription.subscriptionId;
+                if (id == null)
+                {
+                    Log($"Ignoring name from malformed subscription: '{subscription}'");
+                    continue;
+                }
+
+                string name = subscription.displayName;
+                if (name == null)
+                {
+                    Log($"Ignoring name from malformed subscription: '{subscription}'");
+                    continue;
+                }
+
+                Log($"Got subscription: {id}='{name}'");
+                subscriptionNames.Add(id, name);
+            }
+
+            return subscriptionNames;
+        }
+
+        static void AddSubscriptionNames(JArray usages, Dictionary<string, string> subscriptionNames)
+        {
+            long missingProperties = 0;
+            long missingSubscriptionId = 0;
+            long missingSubscriptionName = 0;
+            var addedNames = new Dictionary<string, long>();
+            var missingIds = new Dictionary<string, long>();
+
+            foreach (dynamic usage in usages)
+            {
+                if (usage.properties != null)
+                {
+                    if (usage.properties.subscriptionId != null)
+                    {
+                        string id = usage.properties.subscriptionId;
+                        if (subscriptionNames.ContainsKey(id))
+                        {
+                            string name = subscriptionNames[id];
+                            usage.properties.subscriptionName = name;
+                            if (addedNames.ContainsKey($"{name} ({id})"))
+                            {
+                                addedNames[$"{name} ({id})"]++;
+                            }
+                            else
+                            {
+                                addedNames[$"{name} ({id})"] = 1;
+                            }
+                        }
+                        else
+                        {
+                            missingSubscriptionName++;
+                            if (missingIds.ContainsKey(id))
+                            {
+                                missingIds[id]++;
+                            }
+                            else
+                            {
+                                missingIds[id] = 1;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        missingSubscriptionId++;
+                    }
+                }
+                else
+                {
+                    missingProperties++;
+                }
+            }
+
+            Log("SubscriptionAnnotation:");
+            Log($"  Missing properties: {missingProperties}");
+            Log($"  Missing subscriptionId: {missingSubscriptionId}");
+            Log($"  Missing missingSubscriptionName: {missingSubscriptionName}");
+            foreach (var name in addedNames)
+            {
+                Log($"  Added names: {name.Key}: {name.Value}");
+            }
+            foreach (var id in missingIds)
+            {
+                Log($"  Missing names: {id.Key}: {id.Value}");
+            }
         }
 
         static async Task<JArray> GetSubscriptions(HttpClient client)
@@ -120,11 +228,6 @@ namespace GetAzureCosts
                     continue;
                 }
 
-                JArray offerTerms = result.OfferTerms;
-                Log($"{subscriptionName}: Found {offerTerms.Count} OfferTerms.");
-                JArray meters = result.Meters;
-                Log($"{subscriptionName}: Found {meters.Count} Meters.");
-
                 foreach (var meter in result.Meters)
                 {
                     rates.Add(meter);
@@ -136,6 +239,8 @@ namespace GetAzureCosts
 
         static async Task<JArray> GetUsages(HttpClient client, JArray subscriptions, DateTime startDate, DateTime endDate)
         {
+            var watch = Stopwatch.StartNew();
+
             JArray usages = new JArray();
 
             foreach (dynamic subscription in subscriptions)
@@ -148,7 +253,8 @@ namespace GetAzureCosts
 
                 for (int page = 1; getCostsUrl != null; page++)
                 {
-                    Log($"Getting: '{getCostsUrl}'");
+                    //Log($"Getting: '{getCostsUrl}'");
+                    Console.Write('.');
                     dynamic result = await GetHttpStringAsync(client, getCostsUrl);
                     if (result != null && result.value != null && result.value.Count > 0)
                     {
@@ -186,6 +292,8 @@ namespace GetAzureCosts
                 }
             }
 
+            Log($"Done: {watch.Elapsed}", ConsoleColor.Cyan);
+
             return usages;
         }
 
@@ -209,9 +317,6 @@ namespace GetAzureCosts
 
                 usage.cost = GetCost(a, b);
             }
-
-            File.WriteAllText("rates.json", rates.ToString());
-            File.WriteAllText("usages.json", usages.ToString());
 
             return usages;
         }
