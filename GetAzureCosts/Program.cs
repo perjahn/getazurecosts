@@ -255,9 +255,9 @@ namespace GetAzureCosts
                 string getCostsUrl = $"{subscriptionId}/providers/Microsoft.Commerce/UsageAggregates?api-version=2015-06-01-preview&" +
                     $"reportedstarttime={startDate.ToString("yyyy-MM-dd")}&reportedendtime={endDate.ToString("yyyy-MM-dd")}";
 
+                Log($"Getting: '{getCostsUrl}'");
                 for (int page = 1; getCostsUrl != null; page++)
                 {
-                    //Log($"Getting: '{getCostsUrl}'");
                     Console.Write('.');
                     dynamic result = await GetHttpStringAsync(client, getCostsUrl);
                     if (result != null && result.value != null && result.value.Count > 0)
