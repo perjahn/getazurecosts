@@ -21,20 +21,22 @@ namespace GetAzureCosts
 
         static async Task<int> Main(string[] args)
         {
-            if (args.Length != 8)
+            var parsedArgs = args.TakeWhile(a => a != "--").ToArray();
+
+            if (parsedArgs.Length != 8)
             {
                 Log("Usage: <tenantId> <clientId> <clientSecret> <startDate> <endDate> <elasticUrl> <elasticUsername> <elasticPassword>", ConsoleColor.Red);
                 return 1;
             }
 
-            string tenantId = args[0];
-            string clientId = args[1];
-            string clientSecret = args[2];
-            DateTime startDate = DateTime.Parse(args[3]);
-            DateTime endDate = DateTime.Parse(args[4]);
-            string elasticUrl = args[5];
-            string elasticUsername = args[6];
-            string elasticPassword = args[7];
+            string tenantId = parsedArgs[0];
+            string clientId = parsedArgs[1];
+            string clientSecret = parsedArgs[2];
+            DateTime startDate = DateTime.Parse(parsedArgs[3]);
+            DateTime endDate = DateTime.Parse(parsedArgs[4]);
+            string elasticUrl = parsedArgs[5];
+            string elasticUsername = parsedArgs[6];
+            string elasticPassword = parsedArgs[7];
 
             var watch = Stopwatch.StartNew();
 
