@@ -294,6 +294,7 @@ namespace GetAzureCosts
                         }
                     }
                 }
+                Log(string.Empty);
             }
 
             Log($"Done: {watch.Elapsed}", ConsoleColor.Cyan);
