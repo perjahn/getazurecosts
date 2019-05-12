@@ -19,12 +19,12 @@ namespace GetAzureCosts
     {
         static int resultcount = 0;
 
-        static async Task Main(string[] args)
+        static async Task<int> Main(string[] args)
         {
             if (args.Length != 8)
             {
                 Log("Usage: <tenantId> <clientId> <clientSecret> <startDate> <endDate> <elasticUrl> <elasticUsername> <elasticPassword>", ConsoleColor.Red);
-                return;
+                return 1;
             }
 
             string tenantId = args[0];
@@ -41,6 +41,8 @@ namespace GetAzureCosts
             await DoStuff(tenantId, clientId, clientSecret, startDate, endDate, elasticUrl, elasticUsername, elasticPassword);
 
             Log($"Done: {watch.Elapsed}", ConsoleColor.Green);
+
+            return 0;
         }
 
         static async Task DoStuff(string tenantId, string clientId, string clientSecret, DateTime startDate, DateTime endDate, string elasticUrl, string elasticUsername, string elasticPassword)
