@@ -344,12 +344,25 @@ namespace GetAzureCosts
 
         static async Task SaveToElastic(string elasticUrl, string elasticUsername, string elasticPassword, JArray costs)
         {
-            for (int i = 0; i < costs.Count; i += 10000)
+            int batchsize = 10000;
+            for (int i = 0; i < costs.Count; i += batchsize)
             {
                 var jsonrows = new List<ElasticBulkDocument>();
-                foreach (JObject cost in costs.Skip(i).Take(10000))
+                foreach (dynamic cost in costs.Skip(i).Take(batchsize))
                 {
-                    jsonrows.Add(new ElasticBulkDocument { Index = "costs", Id = GetHashString(cost.ToString()), Type = "doc", Document = cost });
+                    if (cost.properties == null || cost.properties.usageStartTime == null)
+                    {
+                        Log($"Invalid cost (missing usageStartTime): {cost.ToString()}");
+                        continue;
+                    }
+                    string value = cost.properties.usageStartTime;
+                    if (!DateTime.TryParse(value, out DateTime usageStartTime))
+                    {
+                        Log($"Invalid cost (invalid usageStartTime): {cost.ToString()}");
+                        continue;
+                    }
+
+                    jsonrows.Add(new ElasticBulkDocument { Index = $"costs-{usageStartTime:yyyy.MM}", Id = GetHashString(cost.ToString()), Type = "doc", Document = cost });
                 }
                 await Elastic.PutIntoIndex(elasticUrl, elasticUsername, elasticPassword, jsonrows.ToArray());
             }
