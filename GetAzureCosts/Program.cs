@@ -265,7 +265,7 @@ namespace GetAzureCosts
                 Log($"Getting: '{getCostsUrl}'");
                 for (int page = 1; getCostsUrl != null; page++)
                 {
-                    Console.Write('.');
+                    Log($"Page: {page}");
                     dynamic result = await GetHttpStringAsync(client, getCostsUrl);
                     if (result != null && result.value != null && result.value.Count > 0)
                     {
@@ -293,15 +293,19 @@ namespace GetAzureCosts
                     }
                     else
                     {
-                        string domain = "https://management.azure.com:443";
+                        string validDomain = "https://management.azure.com:443";
                         getCostsUrl = result.nextLink;
-                        if (getCostsUrl.StartsWith(domain))
+                        if (getCostsUrl.StartsWith(validDomain))
                         {
-                            getCostsUrl = getCostsUrl.Substring(domain.Length);
+                            getCostsUrl = getCostsUrl.Substring(validDomain.Length);
+                        }
+                        else
+                        {
+                            Log($"Got unknown nextLink: {getCostsUrl}");
+                            return usages;
                         }
                     }
                 }
-                Log(string.Empty);
             }
 
             Log($"Done: {watch.Elapsed}", ConsoleColor.Cyan);
