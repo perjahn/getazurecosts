@@ -23,9 +23,9 @@ namespace GetAzureCosts
         {
             var parsedArgs = args.TakeWhile(a => a != "--").ToArray();
 
-            if (parsedArgs.Length != 8)
+            if (parsedArgs.Length != 9)
             {
-                Log("Usage: <tenantId> <clientId> <clientSecret> <startDate> <endDate> <elasticUrl> <elasticUsername> <elasticPassword>", ConsoleColor.Red);
+                Log("Usage: <tenantId> <clientId> <clientSecret> <startDate> <endDate> <offerId> <elasticUrl> <elasticUsername> <elasticPassword>", ConsoleColor.Red);
                 return 1;
             }
 
@@ -34,20 +34,21 @@ namespace GetAzureCosts
             string clientSecret = parsedArgs[2];
             DateTime startDate = DateTime.Parse(parsedArgs[3]);
             DateTime endDate = DateTime.Parse(parsedArgs[4]);
-            string elasticUrl = parsedArgs[5];
-            string elasticUsername = parsedArgs[6];
-            string elasticPassword = parsedArgs[7];
+            string offerId = parsedArgs[5];
+            string elasticUrl = parsedArgs[6];
+            string elasticUsername = parsedArgs[7];
+            string elasticPassword = parsedArgs[8];
 
             var watch = Stopwatch.StartNew();
 
-            await DoStuff(tenantId, clientId, clientSecret, startDate, endDate, elasticUrl, elasticUsername, elasticPassword);
+            await DoStuff(tenantId, clientId, clientSecret, startDate, endDate, offerId, elasticUrl, elasticUsername, elasticPassword);
 
             Log($"Done: {watch.Elapsed}", ConsoleColor.Green);
 
             return 0;
         }
 
-        static async Task DoStuff(string tenantId, string clientId, string clientSecret, DateTime startDate, DateTime endDate, string elasticUrl, string elasticUsername, string elasticPassword)
+        static async Task DoStuff(string tenantId, string clientId, string clientSecret, DateTime startDate, DateTime endDate, string offerId, string elasticUrl, string elasticUsername, string elasticPassword)
         {
             DateTime today = DateTime.Today;
 
@@ -89,7 +90,7 @@ namespace GetAzureCosts
                     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
                     subscriptions = await GetSubscriptions(client);
-                    rates = await GetRates(client, subscriptions);
+                    rates = await GetRates(client, subscriptions, offerId);
                     usages = await GetUsages(client, subscriptions, startDate, endDate);
                 }
             }
@@ -218,7 +219,7 @@ namespace GetAzureCosts
             return subscriptions;
         }
 
-        static async Task<JArray> GetRates(HttpClient client, JArray subscriptions)
+        static async Task<JArray> GetRates(HttpClient client, JArray subscriptions, string offerId)
         {
             JArray rates = new JArray();
 
@@ -228,7 +229,7 @@ namespace GetAzureCosts
                 string subscriptionName = subscription.displayName;
 
                 // https://msdn.microsoft.com/en-us/library/azure/mt219005
-                string filter = "OfferDurableId eq 'MS-AZR-0121p' and Currency eq 'SEK' and Locale eq 'en-US' and RegionInfo eq 'SE'";
+                string filter = $"OfferDurableId eq '{offerId}' and Currency eq 'SEK' and Locale eq 'en-US' and RegionInfo eq 'SE'";
                 string getCostsUrl = $"{subscriptionId}/providers/Microsoft.Commerce/RateCard?api-version=2016-08-31-preview&$filter={filter}";
 
                 Log($"Getting: '{getCostsUrl}'");
@@ -313,7 +314,7 @@ namespace GetAzureCosts
             int duplicates = 0;
             var tokens = new Dictionary<string, JToken>();
 
-            for (int i = 0; i < array.Count; )
+            for (int i = 0; i < array.Count;)
             {
                 string content = array[i].ToString();
                 string hash = GetHashString(content);
