@@ -100,8 +100,6 @@ namespace GetAzureCosts
             Log($"Got {rates.Count} rates.");
             Log($"Got {usages.Count} usages.");
 
-            RemoveDuplicates(usages);
-
             AddSubscriptionNames(usages, subscriptionNames);
 
             var costs = CalculateCosts(rates, usages);
@@ -313,28 +311,6 @@ namespace GetAzureCosts
             return usages;
         }
 
-        static void RemoveDuplicates(JArray array)
-        {
-            int duplicates = 0;
-            var tokens = new Dictionary<string, JToken>();
-
-            for (int i = 0; i < array.Count;)
-            {
-                string content = array[i].ToString();
-                string hash = GetHashString(content);
-                if (tokens.ContainsKey(hash))
-                {
-                    array[i].Remove();
-                    duplicates++;
-                    continue;
-                }
-                tokens[hash] = content;
-                i++;
-            }
-
-            Log($"Duplicates: {duplicates}");
-        }
-
         static JArray CalculateCosts(JArray rates, JArray usages)
         {
             var ratesDic = new Dictionary<string, JObject>();
@@ -381,7 +357,6 @@ namespace GetAzureCosts
         static async Task SaveToElastic(string elasticUrl, string elasticUsername, string elasticPassword, JArray costs)
         {
             int duplicates = 0;
-            var ids = new Dictionary<string, string>();
 
             int batchsize = 10000;
             for (int i = 0; i < costs.Count; i += batchsize)
@@ -401,14 +376,7 @@ namespace GetAzureCosts
                         continue;
                     }
 
-                    string id = GetHashString(cost.ToString());
-                    if (ids.ContainsKey(id))
-                    {
-                        duplicates++;
-                    }
-                    ids[id] = cost.ToString();
-
-                    jsonrows.Add(new ElasticBulkDocument { Index = $"azurecosts-{usageStartTime:yyyy.MM}", Id = id, Type = "doc", Document = cost });
+                    jsonrows.Add(new ElasticBulkDocument { Index = $"azurecosts-{usageStartTime:yyyy.MM}", Type = "doc", Document = cost });
                 }
                 await Elastic.PutIntoIndex(elasticUrl, elasticUsername, elasticPassword, jsonrows.ToArray());
             }
