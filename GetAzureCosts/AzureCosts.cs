@@ -16,6 +16,7 @@ namespace GetAzureCosts
 {
     class AzureCosts
     {
+        static int Resultcount { get; set; } = 0;
         int Logcount = 0;
 
         public Dictionary<string, string> GetSubscriptionNames(JArray subscriptions)
@@ -115,8 +116,7 @@ namespace GetAzureCosts
         {
             string getSubscriptionsUrl = "/subscriptions?api-version=2016-06-01";
 
-            Log($"Getting: '{getSubscriptionsUrl}'");
-            dynamic result = await GetHttpStringAsync(client, getSubscriptionsUrl);
+            dynamic result = await GetHttpStringAsync(client, getSubscriptionsUrl, null);
             JArray subscriptions = result.value;
 
             Log($"Found {subscriptions.Count} subscriptions.");
@@ -131,14 +131,12 @@ namespace GetAzureCosts
             foreach (dynamic subscription in subscriptions)
             {
                 string subscriptionId = subscription.id;
-                string subscriptionName = subscription.displayName;
 
                 // https://msdn.microsoft.com/en-us/library/azure/mt219005
                 string filter = $"OfferDurableId eq '{offerId}' and Currency eq 'SEK' and Locale eq 'en-US' and RegionInfo eq 'SE'";
                 string getCostsUrl = $"{subscriptionId}/providers/Microsoft.Commerce/RateCard?api-version=2016-08-31-preview&$filter={filter}";
 
-                Log($"Getting: '{getCostsUrl}'");
-                dynamic result = await GetHttpStringAsync(client, getCostsUrl);
+                dynamic result = await GetHttpStringAsync(client, getCostsUrl, new[] { HttpStatusCode.Found });
                 if (result == null)
                 {
                     continue;
@@ -167,11 +165,10 @@ namespace GetAzureCosts
                 string getCostsUrl = $"{subscriptionId}/providers/Microsoft.Commerce/UsageAggregates?api-version=2015-06-01-preview&" +
                     $"reportedstarttime={startDate.ToString("yyyy-MM-dd")}&reportedendtime={endDate.ToString("yyyy-MM-dd")}";
 
-                Log($"Getting: '{getCostsUrl}'");
                 for (int page = 1; getCostsUrl != null; page++)
                 {
                     Log($"Page: {page}");
-                    dynamic result = await GetHttpStringAsync(client, getCostsUrl);
+                    dynamic result = await GetHttpStringAsync(client, getCostsUrl, new[] { HttpStatusCode.Found });
                     if (result != null && result.value != null && result.value.Count > 0)
                     {
                         foreach (JObject value in result.value)
@@ -253,9 +250,6 @@ namespace GetAzureCosts
                 .OrderByDescending(r => double.Parse(r.Name, CultureInfo.InvariantCulture))
                 .FirstOrDefault();
 
-            //Log($">>>{rateEntry}<<<");
-            //Log($">>>{rateEntry.Value}<<<");
-
             double d = rateEntry.Value.ToObject<double>();
 
             return quantity * d;
@@ -269,7 +263,7 @@ namespace GetAzureCosts
             }
         }
 
-        public async Task<string> GetAzureAccessTokensAsync(string tenantId, string clientId, string clientSecret)
+        public async Task<string> GetAzureAccessTokenAsync(string tenantId, string clientId, string clientSecret)
         {
             using (var client = new HttpClient())
             {
@@ -285,46 +279,71 @@ namespace GetAzureCosts
                     $"client_id={WebUtility.UrlEncode(clientId)}&" +
                     $"client_secret={WebUtility.UrlEncode(clientSecret)}";
 
-                try
-                {
-                    dynamic result = await PostHttpStringAsync(client, url, data, "application/x-www-form-urlencoded");
-
-                    return result.access_token.Value;
-                }
-                catch (HttpRequestException ex)
-                {
-                    Log($"Couldn't get access token for client {ex.Message}");
-                    throw;
-                }
+                dynamic result = await PostHttpStringAsync(client, url, data, "application/x-www-form-urlencoded");
+                return result.access_token.Value;
             }
         }
 
-        async Task<JObject> GetHttpStringAsync(HttpClient client, string url)
+        async Task<JObject> GetHttpStringAsync(HttpClient client, string url, HttpStatusCode[] semiAcceptableStatusCodes)
         {
-            var response = await client.GetAsync(url);
-            string result = await response.Content.ReadAsStringAsync();
-
-            try
+            for (int tries = 1; tries <= 10; tries++)
             {
-                response.EnsureSuccessStatusCode();
-            }
-            catch (HttpRequestException ex)
-            {
-                Log(ex.Message);
-                Log($"Result: '{result}'");
-                return null;
-            }
-
-            if (result.Length > 0)
-            {
-                if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("RestDebug")))
+                string result = string.Empty;
+                try
                 {
-                    File.WriteAllText($"result_{Logcount++}.json", JToken.Parse(result).ToString());
+                    Log($"Getting (try {tries}): '{url}'");
+                    var response = await client.GetAsync(url);
+                    result = await response.Content.ReadAsStringAsync();
+                    if (semiAcceptableStatusCodes != null && semiAcceptableStatusCodes.Contains(response.StatusCode))
+                    {
+                        return null;
+                    }
+                    response.EnsureSuccessStatusCode();
+
+                    if (result.Length > 0)
+                    {
+                        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("RestDebug")))
+                        {
+                            File.WriteAllText($"result_{Logcount++}.json", JToken.Parse(result).ToString());
+                        }
+                        return JObject.Parse(result);
+                    }
                 }
-                return JObject.Parse(result);
+                catch (Exception ex) when (ex is HttpRequestException || ex is TaskCanceledException)
+                {
+                    Log($"Couldn't get url: {ex.Message}");
+                    Log($"Result: '{result}'");
+
+                    if (result.Length > 0 && result != "\"\"")
+                    {
+                        string filename = $"result_{Resultcount++}.html";
+                        Log($"Saving result to file: {filename}");
+                        SaveCrapResult(filename, result);
+                    }
+
+                    if (tries == 10)
+                    {
+                        throw;
+                    }
+                    await Task.Delay(2000);
+                }
             }
 
-            return null;
+            throw new Exception("Couldn't get url.");
+        }
+
+        void SaveCrapResult(string filename, string content)
+        {
+            string newContent = content;
+
+            if (newContent.Length >= 2 && newContent.StartsWith("\"") && newContent.EndsWith("\""))
+            {
+                newContent = newContent.Substring(1, newContent.Length - 2);
+            }
+
+            newContent = newContent.Replace(@"\r", "\r").Replace(@"\n", "\n");
+
+            File.WriteAllText(filename, newContent);
         }
 
         async Task<JObject> PostHttpStringAsync(HttpClient client, string url, string content, string contenttype)

@@ -76,13 +76,16 @@ namespace GetAzureCosts
             }
             else
             {
-                string accessToken = await azureCosts.GetAzureAccessTokensAsync(tenantId, clientId, clientSecret);
+                string accessToken = await azureCosts.GetAzureAccessTokenAsync(tenantId, clientId, clientSecret);
                 //Log($"AccessToken: '{accessToken}'");
 
                 using (var client = new HttpClient())
                 {
+                    string domain = "https://management.azure.com";
+                    Log($"Using domain: '{domain}'");
+
                     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-                    client.BaseAddress = new Uri("https://management.azure.com");
+                    client.BaseAddress = new Uri(domain);
                     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
                     subscriptions = await azureCosts.GetSubscriptions(client);
