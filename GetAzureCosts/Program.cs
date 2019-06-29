@@ -132,7 +132,7 @@ namespace GetAzureCosts
                         continue;
                     }
 
-                    jsonrows.Add(new ElasticBulkDocument { Index = $"azurecosts-{usageStartTime:yyyy.MM}", Type = "doc", Document = cost });
+                    jsonrows.Add(new ElasticBulkDocument { Index = $"azurecosts-{usageStartTime:yyyy.MM}", Document = cost });
                 }
                 await Elastic.PutIntoIndex(elasticUrl, elasticUsername, elasticPassword, jsonrows.ToArray());
             }
