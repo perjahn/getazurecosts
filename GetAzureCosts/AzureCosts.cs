@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json.Linq;
+﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -10,6 +11,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace GetAzureCosts
@@ -116,7 +118,7 @@ namespace GetAzureCosts
         {
             string getSubscriptionsUrl = "/subscriptions?api-version=2016-06-01";
 
-            dynamic result = await GetHttpStringAsync(client, getSubscriptionsUrl, null);
+            dynamic result = await GetHttpJObjectAsync(client, getSubscriptionsUrl, null, null);
             JArray subscriptions = result.value;
 
             Log($"Found {subscriptions.Count} subscriptions.");
@@ -136,7 +138,7 @@ namespace GetAzureCosts
                 string filter = $"OfferDurableId eq '{offerId}' and Currency eq 'SEK' and Locale eq 'en-US' and RegionInfo eq 'SE'";
                 string getCostsUrl = $"{subscriptionId}/providers/Microsoft.Commerce/RateCard?api-version=2016-08-31-preview&$filter={filter}";
 
-                dynamic result = await GetHttpStringAsync(client, getCostsUrl, new[] { HttpStatusCode.Found });
+                dynamic result = await GetHttpJObjectAsync(client, getCostsUrl, new[] { HttpStatusCode.Found }, null);
                 if (result == null)
                 {
                     continue;
@@ -162,13 +164,33 @@ namespace GetAzureCosts
                 string subscriptionId = subscription.id;
                 string subscriptionName = subscription.displayName;
 
+                DateTime decreaseableEndDate = endDate;
+
                 string getCostsUrl = $"{subscriptionId}/providers/Microsoft.Commerce/UsageAggregates?api-version=2015-06-01-preview&" +
-                    $"reportedstarttime={startDate.ToString("yyyy-MM-dd")}&reportedendtime={endDate.ToString("yyyy-MM-dd")}";
+                    $"reportedstarttime={startDate.ToString("yyyy-MM-dd")}&reportedendtime={decreaseableEndDate.ToString("yyyy-MM-dd")}";
 
                 for (int page = 1; getCostsUrl != null; page++)
                 {
                     Log($"Page: {page}");
-                    dynamic result = await GetHttpStringAsync(client, getCostsUrl, new[] { HttpStatusCode.Found });
+                    dynamic result = await GetHttpJObjectAsync(client, getCostsUrl, new[] { HttpStatusCode.Found }, (string body) =>
+                    {
+                        string retryUrl;
+
+                        if (TryParseJsonObject(body, out JObject jsonBody))
+                        {
+                            if (((dynamic)jsonBody)?.error?.code == "InvalidInput" && ((dynamic)jsonBody)?.error?.message == "reportedendtime cannot be in the future.")
+                            {
+                                var newEndDate = decreaseableEndDate.AddDays(-1);
+                                Log($"Decreasing enddate: {decreaseableEndDate} -> {newEndDate}");
+                                decreaseableEndDate = newEndDate;
+                            }
+                        }
+
+                        retryUrl = $"{subscriptionId}/providers/Microsoft.Commerce/UsageAggregates?api-version=2015-06-01-preview&" +
+                            $"reportedstarttime={startDate.ToString("yyyy-MM-dd")}&reportedendtime={decreaseableEndDate.ToString("yyyy-MM-dd")}";
+
+                        return retryUrl;
+                    });
                     if (result != null && result.value != null && result.value.Count > 0)
                     {
                         foreach (JObject value in result.value)
@@ -284,15 +306,17 @@ namespace GetAzureCosts
             }
         }
 
-        async Task<JObject> GetHttpStringAsync(HttpClient client, string url, HttpStatusCode[] semiAcceptableStatusCodes)
+        async Task<JObject> GetHttpJObjectAsync(HttpClient client, string url, HttpStatusCode[] semiAcceptableStatusCodes, Func<string, string> retryFunc)
         {
+            var retryUrl = url;
+
             for (int tries = 1; tries <= 10; tries++)
             {
                 string result = string.Empty;
                 try
                 {
-                    Log($"Getting (try {tries}): '{url}'");
-                    var response = await client.GetAsync(url);
+                    Log($"Getting (try {tries}): '{retryUrl}'");
+                    var response = await client.GetAsync(retryUrl);
                     result = await response.Content.ReadAsStringAsync();
                     if (semiAcceptableStatusCodes != null && semiAcceptableStatusCodes.Contains(response.StatusCode))
                     {
@@ -309,7 +333,7 @@ namespace GetAzureCosts
                         return JObject.Parse(result);
                     }
                 }
-                catch (Exception ex) when (ex is HttpRequestException || ex is TaskCanceledException)
+                catch (Exception ex) when (ex is HttpRequestException || ex is TaskCanceledException || ex is JsonReaderException)
                 {
                     Log($"Couldn't get url: {ex.Message}");
                     Log($"Result: '{result}'");
@@ -319,6 +343,11 @@ namespace GetAzureCosts
                         string filename = $"result_{Resultcount++}.html";
                         Log($"Saving result to file: {filename}");
                         SaveCrapResult(filename, result);
+                    }
+
+                    if (retryFunc != null)
+                    {
+                        retryUrl = retryFunc.Invoke(result);
                     }
 
                     if (tries == 10)
@@ -362,6 +391,33 @@ namespace GetAzureCosts
             }
 
             return null;
+        }
+
+        public static bool TryParseJsonObject(string json, out JObject jobject)
+        {
+            try
+            {
+                jobject = JObject.Parse(json);
+                return true;
+            }
+            catch (JsonReaderException)
+            {
+                try
+                {
+                    if (json.Length >= 2)
+                    {
+                        jobject = JObject.Parse(Regex.Unescape(json.Substring(1, json.Length - 2)));
+                        return true;
+                    }
+                }
+                catch (JsonReaderException)
+                {
+
+                }
+
+                jobject = null;
+                return false;
+            }
         }
 
         void Log(string message, ConsoleColor color)

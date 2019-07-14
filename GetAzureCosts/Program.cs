@@ -34,7 +34,7 @@ namespace GetAzureCosts
 
             var watch = Stopwatch.StartNew();
 
-            DateTime today = DateTime.Today;
+            DateTime today = DateTime.UtcNow.Date;
 
             if (startDate >= today)
             {
