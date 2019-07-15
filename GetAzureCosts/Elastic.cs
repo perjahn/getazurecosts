@@ -62,9 +62,13 @@ namespace GetAzureCosts
 
                 WriteLogMessage(query, "post");
 
-                var response = await client.PostAsync(url, new StringContent(query, Encoding.UTF8, "application/json"));
-                response.EnsureSuccessStatusCode();
-                string result = await response.Content.ReadAsStringAsync();
+                string result;
+
+                using (var response = await client.PostAsync(url, new StringContent(query, Encoding.UTF8, "application/json")))
+                {
+                    response.EnsureSuccessStatusCode();
+                    result = await response.Content.ReadAsStringAsync();
+                }
 
                 WriteLogMessage(result, "result");
 
@@ -114,12 +118,12 @@ namespace GetAzureCosts
                 var content = new StringContent(bulkdata, Encoding.UTF8, "application/x-ndjson");
                 // Elastic doesn't support setting charset (after encoding at Content-Type), blank it out.
                 content.Headers.ContentType.CharSet = string.Empty;
-                var response = await client.PostAsync(address, content);
-
-                string result = await response.Content.ReadAsStringAsync();
-                WriteLogMessage(result, "result");
-
-                response.EnsureSuccessStatusCode();
+                using (var response = await client.PostAsync(address, content))
+                {
+                    string result = await response.Content.ReadAsStringAsync();
+                    WriteLogMessage(result, "result");
+                    response.EnsureSuccessStatusCode();
+                }
             }
         }
 

@@ -316,13 +316,15 @@ namespace GetAzureCosts
                 try
                 {
                     Log($"Getting (try {tries}): '{retryUrl}'");
-                    var response = await client.GetAsync(retryUrl);
-                    result = await response.Content.ReadAsStringAsync();
-                    if (semiAcceptableStatusCodes != null && semiAcceptableStatusCodes.Contains(response.StatusCode))
+                    using (var response = await client.GetAsync(retryUrl))
                     {
-                        return null;
+                        result = await response.Content.ReadAsStringAsync();
+                        if (semiAcceptableStatusCodes != null && semiAcceptableStatusCodes.Contains(response.StatusCode))
+                        {
+                            return null;
+                        }
+                        response.EnsureSuccessStatusCode();
                     }
-                    response.EnsureSuccessStatusCode();
 
                     if (result.Length > 0)
                     {
