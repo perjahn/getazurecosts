@@ -22,19 +22,19 @@ namespace GetAzureCosts
                 return 1;
             }
 
-            string tenantId = parsedArgs[0];
-            string clientId = parsedArgs[1];
-            string clientSecret = parsedArgs[2];
-            DateTime startDate = DateTime.Parse(parsedArgs[3]);
-            DateTime endDate = DateTime.Parse(parsedArgs[4]);
-            string offerId = parsedArgs[5];
-            string elasticUrl = parsedArgs[6];
-            string elasticUsername = parsedArgs[7];
-            string elasticPassword = parsedArgs[8];
+            var tenantId = parsedArgs[0];
+            var clientId = parsedArgs[1];
+            var clientSecret = parsedArgs[2];
+            var startDate = DateTime.Parse(parsedArgs[3]);
+            var endDate = DateTime.Parse(parsedArgs[4]);
+            var offerId = parsedArgs[5];
+            var elasticUrl = parsedArgs[6];
+            var elasticUsername = parsedArgs[7];
+            var elasticPassword = parsedArgs[8];
 
             var watch = Stopwatch.StartNew();
 
-            DateTime today = DateTime.UtcNow.Date;
+            var today = DateTime.UtcNow.Date;
 
             if (startDate >= today)
             {
@@ -59,9 +59,9 @@ namespace GetAzureCosts
         {
             JArray subscriptions, rates, usages;
 
-            string subscriptionsFilename = $"subscriptions_{clientId}.json";
-            string ratesFilename = $"rates_{clientId}.json";
-            string usagesFilename = $"usages_{clientId}.json";
+            var subscriptionsFilename = $"subscriptions_{clientId}.json";
+            var ratesFilename = $"rates_{clientId}.json";
+            var usagesFilename = $"usages_{clientId}.json";
 
             var azureCosts = new AzureCosts();
 
@@ -76,12 +76,12 @@ namespace GetAzureCosts
             }
             else
             {
-                string accessToken = await azureCosts.GetAzureAccessTokenAsync(tenantId, clientId, clientSecret);
+                var accessToken = await azureCosts.GetAzureAccessTokenAsync(tenantId, clientId, clientSecret);
                 //Log($"AccessToken: '{accessToken}'");
 
                 using (var client = new HttpClient())
                 {
-                    string domain = "https://management.azure.com";
+                    var domain = "https://management.azure.com";
                     Log($"Using domain: '{domain}'");
 
                     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
@@ -112,10 +112,10 @@ namespace GetAzureCosts
 
         static async Task SaveToElastic(string elasticUrl, string elasticUsername, string elasticPassword, JArray costs)
         {
-            int duplicates = 0;
+            var duplicates = 0;
 
-            int batchsize = 10000;
-            for (int i = 0; i < costs.Count; i += batchsize)
+            var batchsize = 10000;
+            for (var i = 0; i < costs.Count; i += batchsize)
             {
                 var jsonrows = new List<ElasticBulkDocument>();
                 foreach (dynamic cost in costs.Skip(i).Take(batchsize))
@@ -126,7 +126,7 @@ namespace GetAzureCosts
                         continue;
                     }
                     string value = cost.properties.usageStartTime;
-                    if (!DateTime.TryParse(value, out DateTime usageStartTime))
+                    if (!DateTime.TryParse(value, out var usageStartTime))
                     {
                         Log($"Invalid cost (invalid usageStartTime): {cost.ToString()}");
                         continue;

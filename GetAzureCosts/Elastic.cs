@@ -1,8 +1,6 @@
 ﻿using Newtonsoft.Json.Linq;
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -18,11 +16,11 @@ namespace GetAzureCosts
             string elasticFilterField, string elasticFilterValue,
             string timestampfieldname, DateTime starttime, DateTime endtime)
         {
-            using (HttpClient client = new HttpClient())
+            using (var client = new HttpClient())
             {
                 client.BaseAddress = new Uri(address);
 
-                string credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
+                var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
                 client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
@@ -55,7 +53,7 @@ namespace GetAzureCosts
                         "\" } } } }";
                 }
 
-                string url = $"{indexname}/_search?size=10000";
+                var url = $"{indexname}/_search?size=10000";
 
                 Log($"url: >>>{url}<<<");
                 Log($"body: >>>{query}<<<");
@@ -64,10 +62,13 @@ namespace GetAzureCosts
 
                 string result;
 
-                using (var response = await client.PostAsync(url, new StringContent(query, Encoding.UTF8, "application/json")))
+                using (var stringContent = new StringContent(query, Encoding.UTF8, "application/json"))
                 {
-                    response.EnsureSuccessStatusCode();
-                    result = await response.Content.ReadAsStringAsync();
+                    using (var response = await client.PostAsync(url, stringContent))
+                    {
+                        response.EnsureSuccessStatusCode();
+                        result = await response.Content.ReadAsStringAsync();
+                    }
                 }
 
                 WriteLogMessage(result, "result");
@@ -85,19 +86,19 @@ namespace GetAzureCosts
 
         public static async Task PutIntoIndex(string serverurl, string username, string password, ElasticBulkDocument[] jsonrows)
         {
-            StringBuilder sb = new StringBuilder();
+            var sb = new StringBuilder();
 
             foreach (var jsonrow in jsonrows)
             {
-                string metadata = "{ \"index\": { \"_index\": \"" + jsonrow.Index + "\" } }";
+                var metadata = "{ \"index\": { \"_index\": \"" + jsonrow.Index + "\" } }";
                 sb.AppendLine(metadata);
 
-                string rowdata = jsonrow.Document.ToString().Replace("\r", string.Empty).Replace("\n", string.Empty);
+                var rowdata = jsonrow.Document.ToString().Replace("\r", string.Empty).Replace("\n", string.Empty);
                 sb.AppendLine(rowdata);
             }
 
-            string address = $"{serverurl}/_bulk";
-            string bulkdata = sb.ToString();
+            var address = $"{serverurl}/_bulk";
+            var bulkdata = sb.ToString();
 
             Log($"Importing {jsonrows.Length} documents...");
             await ImportRows(address, username, password, bulkdata);
@@ -111,18 +112,20 @@ namespace GetAzureCosts
 
             using (var client = new HttpClient())
             {
-                string credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
+                var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
                 client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-                var content = new StringContent(bulkdata, Encoding.UTF8, "application/x-ndjson");
-                // Elastic doesn't support setting charset (after encoding at Content-Type), blank it out.
-                content.Headers.ContentType.CharSet = string.Empty;
-                using (var response = await client.PostAsync(address, content))
+                using (var content = new StringContent(bulkdata, Encoding.UTF8, "application/x-ndjson"))
                 {
-                    string result = await response.Content.ReadAsStringAsync();
-                    WriteLogMessage(result, "result");
-                    response.EnsureSuccessStatusCode();
+                    // Elastic doesn't support setting charset (after encoding at Content-Type), blank it out.
+                    content.Headers.ContentType.CharSet = string.Empty;
+                    using (var response = await client.PostAsync(address, content))
+                    {
+                        var result = await response.Content.ReadAsStringAsync();
+                        WriteLogMessage(result, "result");
+                        response.EnsureSuccessStatusCode();
+                    }
                 }
             }
         }
@@ -131,7 +134,7 @@ namespace GetAzureCosts
         {
             if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ElasticRestDebug")))
             {
-                if (TryParseJson(message, out JToken jtoken))
+                if (TryParseJson(message, out var jtoken))
                 {
                     File.WriteAllText($"Elastic_{Logcount++}_{action}.json", jtoken.ToString());
                 }

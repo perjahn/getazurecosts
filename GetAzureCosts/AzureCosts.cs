@@ -19,6 +19,7 @@ namespace GetAzureCosts
     class AzureCosts
     {
         static int Resultcount { get; set; } = 0;
+
         int Logcount = 0;
 
         public Dictionary<string, string> GetSubscriptionNames(JArray subscriptions)
@@ -65,7 +66,7 @@ namespace GetAzureCosts
                         string id = usage.properties.subscriptionId;
                         if (subscriptionNames.ContainsKey(id))
                         {
-                            string name = subscriptionNames[id];
+                            var name = subscriptionNames[id];
                             usage.properties.subscriptionName = name;
                             if (addedNames.ContainsKey($"{name} ({id})"))
                             {
@@ -116,7 +117,7 @@ namespace GetAzureCosts
 
         public async Task<JArray> GetSubscriptions(HttpClient client)
         {
-            string getSubscriptionsUrl = "/subscriptions?api-version=2016-06-01";
+            var getSubscriptionsUrl = "/subscriptions?api-version=2016-06-01";
 
             dynamic result = await GetHttpJObjectAsync(client, getSubscriptionsUrl, null, null);
             JArray subscriptions = result.value;
@@ -128,15 +129,15 @@ namespace GetAzureCosts
 
         public async Task<JArray> GetRates(HttpClient client, JArray subscriptions, string offerId)
         {
-            JArray rates = new JArray();
+            var rates = new JArray();
 
             foreach (dynamic subscription in subscriptions)
             {
                 string subscriptionId = subscription.id;
 
                 // https://msdn.microsoft.com/en-us/library/azure/mt219005
-                string filter = $"OfferDurableId eq '{offerId}' and Currency eq 'SEK' and Locale eq 'en-US' and RegionInfo eq 'SE'";
-                string getCostsUrl = $"{subscriptionId}/providers/Microsoft.Commerce/RateCard?api-version=2016-08-31-preview&$filter={filter}";
+                var filter = $"OfferDurableId eq '{offerId}' and Currency eq 'SEK' and Locale eq 'en-US' and RegionInfo eq 'SE'";
+                var getCostsUrl = $"{subscriptionId}/providers/Microsoft.Commerce/RateCard?api-version=2016-08-31-preview&$filter={filter}";
 
                 dynamic result = await GetHttpJObjectAsync(client, getCostsUrl, new[] { HttpStatusCode.Found }, null);
                 if (result == null)
@@ -157,26 +158,26 @@ namespace GetAzureCosts
         {
             var watch = Stopwatch.StartNew();
 
-            JArray usages = new JArray();
+            var usages = new JArray();
 
             foreach (dynamic subscription in subscriptions)
             {
                 string subscriptionId = subscription.id;
                 string subscriptionName = subscription.displayName;
 
-                DateTime decreaseableEndDate = endDate;
+                var decreaseableEndDate = endDate;
 
-                string getCostsUrl = $"{subscriptionId}/providers/Microsoft.Commerce/UsageAggregates?api-version=2015-06-01-preview&" +
+                var getCostsUrl = $"{subscriptionId}/providers/Microsoft.Commerce/UsageAggregates?api-version=2015-06-01-preview&" +
                     $"reportedstarttime={startDate.ToString("yyyy-MM-dd")}&reportedendtime={decreaseableEndDate.ToString("yyyy-MM-dd")}";
 
-                for (int page = 1; getCostsUrl != null; page++)
+                for (var page = 1; getCostsUrl != null; page++)
                 {
                     Log($"Page: {page}");
                     dynamic result = await GetHttpJObjectAsync(client, getCostsUrl, new[] { HttpStatusCode.Found }, (string body) =>
                     {
                         string retryUrl;
 
-                        if (TryParseJsonObject(body, out JObject jsonBody))
+                        if (TryParseJsonObject(body, out var jsonBody))
                         {
                             if (((dynamic)jsonBody)?.error?.code == "InvalidInput" && ((dynamic)jsonBody)?.error?.message == "reportedendtime cannot be in the future.")
                             {
@@ -217,7 +218,7 @@ namespace GetAzureCosts
                     }
                     else
                     {
-                        string validDomain = "https://management.azure.com:443";
+                        var validDomain = "https://management.azure.com:443";
                         getCostsUrl = result.nextLink;
                         if (getCostsUrl.StartsWith(validDomain))
                         {
@@ -252,7 +253,7 @@ namespace GetAzureCosts
             foreach (dynamic usage in usages)
             {
                 string meterid = usage.properties.meterId;
-                JObject a = ratesDic[meterid];
+                var a = ratesDic[meterid];
                 JObject b = usage;
 
                 usage.cost = GetCost(a, b);
@@ -272,7 +273,7 @@ namespace GetAzureCosts
                 .OrderByDescending(r => double.Parse(r.Name, CultureInfo.InvariantCulture))
                 .FirstOrDefault();
 
-            double d = rateEntry.Value.ToObject<double>();
+            var d = rateEntry.Value.ToObject<double>();
 
             return quantity * d;
         }
@@ -291,11 +292,11 @@ namespace GetAzureCosts
             {
                 client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-                string loginurl = "https://login.microsoftonline.com";
-                string managementurlForAuth = "https://management.core.windows.net/";
+                var loginurl = "https://login.microsoftonline.com";
+                var managementurlForAuth = "https://management.core.windows.net/";
 
-                string url = $"{loginurl}/{tenantId}/oauth2/token?api-version=1.0";
-                string data =
+                var url = $"{loginurl}/{tenantId}/oauth2/token?api-version=1.0";
+                var data =
                     $"grant_type=client_credentials&" +
                     $"resource={WebUtility.UrlEncode(managementurlForAuth)}&" +
                     $"client_id={WebUtility.UrlEncode(clientId)}&" +
@@ -310,9 +311,9 @@ namespace GetAzureCosts
         {
             var retryUrl = url;
 
-            for (int tries = 1; tries <= 10; tries++)
+            for (var tries = 1; tries <= 10; tries++)
             {
-                string result = string.Empty;
+                var result = string.Empty;
                 try
                 {
                     Log($"Getting (try {tries}): '{retryUrl}'");
@@ -342,7 +343,7 @@ namespace GetAzureCosts
 
                     if (result.Length > 0 && result != "\"\"")
                     {
-                        string filename = $"result_{Resultcount++}.html";
+                        var filename = $"result_{Resultcount++}.html";
                         Log($"Saving result to file: {filename}");
                         SaveCrapResult(filename, result);
                     }
@@ -365,7 +366,7 @@ namespace GetAzureCosts
 
         void SaveCrapResult(string filename, string content)
         {
-            string newContent = content;
+            var newContent = content;
 
             if (newContent.Length >= 2 && newContent.StartsWith("\"") && newContent.EndsWith("\""))
             {
@@ -379,17 +380,23 @@ namespace GetAzureCosts
 
         async Task<JObject> PostHttpStringAsync(HttpClient client, string url, string content, string contenttype)
         {
-            var response = await client.PostAsync(url, new StringContent(content, Encoding.UTF8, contenttype));
-            response.EnsureSuccessStatusCode();
-            string result = await response.Content.ReadAsStringAsync();
-
-            if (result.Length > 0)
+            using (var stringContent = new StringContent(content, Encoding.UTF8, contenttype))
             {
-                if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("RestDebug")))
+                string result;
+                using (var response = await client.PostAsync(url, stringContent))
                 {
-                    File.WriteAllText($"result_{Logcount++}.json", JToken.Parse(result).ToString());
+                    response.EnsureSuccessStatusCode();
+                    result = await response.Content.ReadAsStringAsync();
                 }
-                return JObject.Parse(result);
+
+                if (result.Length > 0)
+                {
+                    if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("RestDebug")))
+                    {
+                        File.WriteAllText($"result_{Logcount++}.json", JToken.Parse(result).ToString());
+                    }
+                    return JObject.Parse(result);
+                }
             }
 
             return null;
