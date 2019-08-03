@@ -14,11 +14,17 @@ namespace GetAzureCosts
     {
         static async Task<int> Main(string[] args)
         {
-            var parsedArgs = args.TakeWhile(a => a != "--").ToArray();
+            string usage =
+@"Usage: <tenantId> <clientId> <clientSecret> <startDate> <endDate> <offerId> <elasticUrl> <elasticUsername> <elasticPassword> [-l lowercaseFields]
 
-            if (parsedArgs.Length != 9)
+Quote lowercase dotfields using JPath syntax: part1.['part2.part3'].part4";
+
+            var parsedArgs = args.TakeWhile(a => a != "--").ToList();
+            var lowercaseFields = CmdlineArgs.ExtractFlag(parsedArgs, "-l") ?? string.Empty;
+
+            if (parsedArgs.Count != 9)
             {
-                Log("Usage: <tenantId> <clientId> <clientSecret> <startDate> <endDate> <offerId> <elasticUrl> <elasticUsername> <elasticPassword>", ConsoleColor.Red);
+                Log(usage, ConsoleColor.Red);
                 return 1;
             }
 
@@ -48,6 +54,8 @@ namespace GetAzureCosts
             }
 
             var costs = await RetrieveCostsFromAzure(tenantId, clientId, clientSecret, offerId, startDate, endDate);
+
+            JsonProcessor.Lowercase(costs, lowercaseFields.Split(','));
 
             await SaveToElastic(elasticUrl, elasticUsername, elasticPassword, costs);
             Log($"Done: {watch.Elapsed}", ConsoleColor.Green);
