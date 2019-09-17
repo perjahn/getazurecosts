@@ -96,9 +96,9 @@ Quote lowercase dotfields using JPath syntax: part1.['part2.part3'].part4";
                     client.BaseAddress = new Uri(domain);
                     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-                    subscriptions = await azureCosts.GetSubscriptions(client);
-                    rates = await azureCosts.GetRates(client, subscriptions, offerId);
-                    usages = await azureCosts.GetUsages(client, subscriptions, startDate, endDate);
+                    subscriptions = await azureCosts.GetSubscriptions(client, tenantId, clientId, clientSecret);
+                    rates = await azureCosts.GetRates(client, subscriptions, offerId, tenantId, clientId, clientSecret);
+                    usages = await azureCosts.GetUsages(client, subscriptions, startDate, endDate, tenantId, clientId, clientSecret);
                 }
             }
 

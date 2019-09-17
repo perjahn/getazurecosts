@@ -115,11 +115,11 @@ namespace GetAzureCosts
             }
         }
 
-        public async Task<JArray> GetSubscriptions(HttpClient client)
+        public async Task<JArray> GetSubscriptions(HttpClient client, string tenantId, string clientId, string clientSecret)
         {
             var getSubscriptionsUrl = "/subscriptions?api-version=2016-06-01";
 
-            dynamic result = await GetHttpJObjectAsync(client, getSubscriptionsUrl, null, null);
+            dynamic result = await GetHttpJObjectAsync(client, getSubscriptionsUrl, null, null, tenantId, clientId, clientSecret);
             JArray subscriptions = result.value;
 
             Log($"Found {subscriptions.Count} subscriptions.");
@@ -127,7 +127,7 @@ namespace GetAzureCosts
             return subscriptions;
         }
 
-        public async Task<JArray> GetRates(HttpClient client, JArray subscriptions, string offerId)
+        public async Task<JArray> GetRates(HttpClient client, JArray subscriptions, string offerId, string tenantId, string clientId, string clientSecret)
         {
             var rates = new JArray();
 
@@ -139,7 +139,7 @@ namespace GetAzureCosts
                 var filter = $"OfferDurableId eq '{offerId}' and Currency eq 'SEK' and Locale eq 'en-US' and RegionInfo eq 'SE'";
                 var getCostsUrl = $"{subscriptionId}/providers/Microsoft.Commerce/RateCard?api-version=2016-08-31-preview&$filter={filter}";
 
-                dynamic result = await GetHttpJObjectAsync(client, getCostsUrl, new[] { HttpStatusCode.Found }, null);
+                dynamic result = await GetHttpJObjectAsync(client, getCostsUrl, new[] { HttpStatusCode.Found }, null, tenantId, clientId, clientSecret);
                 if (result == null)
                 {
                     continue;
@@ -154,7 +154,7 @@ namespace GetAzureCosts
             return rates;
         }
 
-        public async Task<JArray> GetUsages(HttpClient client, JArray subscriptions, DateTime startDate, DateTime endDate)
+        public async Task<JArray> GetUsages(HttpClient client, JArray subscriptions, DateTime startDate, DateTime endDate, string tenantId, string clientId, string clientSecret)
         {
             var watch = Stopwatch.StartNew();
 
@@ -191,7 +191,8 @@ namespace GetAzureCosts
                             $"reportedstarttime={startDate.ToString("yyyy-MM-dd")}&reportedendtime={decreaseableEndDate.ToString("yyyy-MM-dd")}";
 
                         return retryUrl;
-                    });
+                    }, tenantId, clientId, clientSecret);
+
                     if (result != null && result.value != null && result.value.Count > 0)
                     {
                         foreach (JObject value in result.value)
@@ -307,7 +308,7 @@ namespace GetAzureCosts
             }
         }
 
-        async Task<JObject> GetHttpJObjectAsync(HttpClient client, string url, HttpStatusCode[] semiAcceptableStatusCodes, Func<string, string> retryFunc)
+        async Task<JObject> GetHttpJObjectAsync(HttpClient client, string url, HttpStatusCode[] semiAcceptableStatusCodes, Func<string, string> retryFunc, string tenantId, string clientId, string clientSecret)
         {
             var retryUrl = url;
 
@@ -324,7 +325,17 @@ namespace GetAzureCosts
                         {
                             return null;
                         }
-                        response.EnsureSuccessStatusCode();
+
+                        if (response.StatusCode == HttpStatusCode.Unauthorized)
+                        {
+                            Log("Renewing access token.");
+                            var accessToken = await GetAzureAccessTokenAsync(tenantId, clientId, clientSecret);
+                            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                        }
+                        else
+                        {
+                            response.EnsureSuccessStatusCode();
+                        }
                     }
 
                     if (result.Length > 0)
