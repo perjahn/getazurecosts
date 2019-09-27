@@ -1,10 +1,6 @@
 using GetAzureCosts;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
-using System;
-using System.Linq;
-using System.Collections.Generic;
-using System.Text;
 
 namespace GetAzureCostsTests
 {

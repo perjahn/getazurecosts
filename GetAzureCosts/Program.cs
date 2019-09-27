@@ -87,19 +87,18 @@ Quote lowercase dotfields using JPath syntax: part1.['part2.part3'].part4";
                 var accessToken = await azureCosts.GetAzureAccessTokenAsync(tenantId, clientId, clientSecret);
                 //Log($"AccessToken: '{accessToken}'");
 
-                using (var client = new HttpClient())
-                {
-                    var domain = "https://management.azure.com";
-                    Log($"Using domain: '{domain}'");
+                using var client = new HttpClient();
 
-                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-                    client.BaseAddress = new Uri(domain);
-                    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                var domain = "https://management.azure.com";
+                Log($"Using domain: '{domain}'");
 
-                    subscriptions = await azureCosts.GetSubscriptions(client, tenantId, clientId, clientSecret);
-                    rates = await azureCosts.GetRates(client, subscriptions, offerId, tenantId, clientId, clientSecret);
-                    usages = await azureCosts.GetUsages(client, subscriptions, startDate, endDate, tenantId, clientId, clientSecret);
-                }
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                client.BaseAddress = new Uri(domain);
+                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+                subscriptions = await azureCosts.GetSubscriptions(client, tenantId, clientId, clientSecret);
+                rates = await azureCosts.GetRates(client, subscriptions, offerId, tenantId, clientId, clientSecret);
+                usages = await azureCosts.GetUsages(client, subscriptions, startDate, endDate, tenantId, clientId, clientSecret);
             }
 
             var subscriptionNames = azureCosts.GetSubscriptionNames(subscriptions);

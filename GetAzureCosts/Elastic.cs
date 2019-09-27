@@ -16,69 +16,66 @@ namespace GetAzureCosts
             string elasticFilterField, string elasticFilterValue,
             string timestampfieldname, DateTime starttime, DateTime endtime)
         {
-            using (var client = new HttpClient())
+            using var client = new HttpClient
             {
-                client.BaseAddress = new Uri(address);
+                BaseAddress = new Uri(address)
+            };
 
-                var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-                string query;
+            string query;
 
-                if (elasticFilterField != null && elasticFilterValue != null)
-                {
-                    query =
-                        "{ \"query\": { \"bool\": { \"must\": [ { \"match_phrase\": { \"" +
-                        elasticFilterField +
-                        "\": { \"query\": \"" +
-                        elasticFilterValue +
-                        "\" } } }, { \"range\": { \"" +
-                        timestampfieldname +
-                        "\": { \"gte\": \"" +
-                        starttime.ToString("yyyy-MM-ddTHH:mm:ss.fff") +
-                        "\"," + "\"lte\": \"" +
-                        endtime.ToString("yyyy-MM-ddTHH:mm:ss.fff") +
-                        "\" } } } ] } } }";
-                }
-                else
-                {
-                    query =
-                        "{ \"query\": { \"range\": { \"" +
-                        timestampfieldname +
-                        "\": { \"gte\": \"" +
-                        starttime.ToString("yyyy-MM-ddTHH:mm:ss.fff") +
-                        "\", \"lte\": \"" +
-                        endtime.ToString("yyyy-MM-ddTHH:mm:ss.fff") +
-                        "\" } } } }";
-                }
+            if (elasticFilterField != null && elasticFilterValue != null)
+            {
+                query =
+                    "{ \"query\": { \"bool\": { \"must\": [ { \"match_phrase\": { \"" +
+                    elasticFilterField +
+                    "\": { \"query\": \"" +
+                    elasticFilterValue +
+                    "\" } } }, { \"range\": { \"" +
+                    timestampfieldname +
+                    "\": { \"gte\": \"" +
+                    starttime.ToString("yyyy-MM-ddTHH:mm:ss.fff") +
+                    "\"," + "\"lte\": \"" +
+                    endtime.ToString("yyyy-MM-ddTHH:mm:ss.fff") +
+                    "\" } } } ] } } }";
+            }
+            else
+            {
+                query =
+                    "{ \"query\": { \"range\": { \"" +
+                    timestampfieldname +
+                    "\": { \"gte\": \"" +
+                    starttime.ToString("yyyy-MM-ddTHH:mm:ss.fff") +
+                    "\", \"lte\": \"" +
+                    endtime.ToString("yyyy-MM-ddTHH:mm:ss.fff") +
+                    "\" } } } }";
+            }
 
-                var url = $"{indexname}/_search?size=10000";
+            var url = $"{indexname}/_search?size=10000";
 
-                Log($"url: >>>{url}<<<");
-                Log($"body: >>>{query}<<<");
+            Log($"url: >>>{url}<<<");
+            Log($"body: >>>{query}<<<");
 
-                WriteLogMessage(query, "post");
+            WriteLogMessage(query, "post");
 
-                string result;
+            string result;
 
-                using (var stringContent = new StringContent(query, Encoding.UTF8, "application/json"))
-                {
-                    using (var response = await client.PostAsync(url, stringContent))
-                    {
-                        response.EnsureSuccessStatusCode();
-                        result = await response.Content.ReadAsStringAsync();
-                    }
-                }
+            using var stringContent = new StringContent(query, Encoding.UTF8, "application/json");
 
-                WriteLogMessage(result, "result");
+            using var response = await client.PostAsync(url, stringContent);
+            response.EnsureSuccessStatusCode();
+            result = await response.Content.ReadAsStringAsync();
 
-                if (result.Length > 0)
-                {
-                    dynamic hits = JObject.Parse(result);
+            WriteLogMessage(result, "result");
 
-                    return (JArray)hits.hits.hits;
-                }
+            if (result.Length > 0)
+            {
+                dynamic hits = JObject.Parse(result);
+
+                return (JArray)hits.hits.hits;
             }
 
             return null;
@@ -110,24 +107,21 @@ namespace GetAzureCosts
         {
             WriteLogMessage(bulkdata, "post");
 
-            using (var client = new HttpClient())
-            {
-                var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            using var client = new HttpClient();
 
-                using (var content = new StringContent(bulkdata, Encoding.UTF8, "application/x-ndjson"))
-                {
-                    // Elastic doesn't support setting charset (after encoding at Content-Type), blank it out.
-                    content.Headers.ContentType.CharSet = string.Empty;
-                    using (var response = await client.PostAsync(address, content))
-                    {
-                        var result = await response.Content.ReadAsStringAsync();
-                        WriteLogMessage(result, "result");
-                        response.EnsureSuccessStatusCode();
-                    }
-                }
-            }
+            var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+            using var content = new StringContent(bulkdata, Encoding.UTF8, "application/x-ndjson");
+
+            // Elastic doesn't support setting charset (after encoding at Content-Type), blank it out.
+            content.Headers.ContentType.CharSet = string.Empty;
+            using var response = await client.PostAsync(address, content);
+
+            var result = await response.Content.ReadAsStringAsync();
+            WriteLogMessage(result, "result");
+            response.EnsureSuccessStatusCode();
         }
 
         public static void WriteLogMessage(string message, string action)
