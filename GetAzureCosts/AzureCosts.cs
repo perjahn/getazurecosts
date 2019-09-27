@@ -281,31 +281,27 @@ namespace GetAzureCosts
 
         string GetHashString(string value)
         {
-            using (var crypto = new SHA256Managed())
-            {
-                return string.Concat(crypto.ComputeHash(Encoding.UTF8.GetBytes(value)).Select(b => b.ToString("x2")));
-            }
+            using var crypto = new SHA256Managed();
+            return string.Concat(crypto.ComputeHash(Encoding.UTF8.GetBytes(value)).Select(b => b.ToString("x2")));
         }
 
         public async Task<string> GetAzureAccessTokenAsync(string tenantId, string clientId, string clientSecret)
         {
-            using (var client = new HttpClient())
-            {
-                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-                var loginurl = "https://login.microsoftonline.com";
-                var managementurlForAuth = "https://management.core.windows.net/";
+            var loginurl = "https://login.microsoftonline.com";
+            var managementurlForAuth = "https://management.core.windows.net/";
 
-                var url = $"{loginurl}/{tenantId}/oauth2/token?api-version=1.0";
-                var data =
-                    $"grant_type=client_credentials&" +
-                    $"resource={WebUtility.UrlEncode(managementurlForAuth)}&" +
-                    $"client_id={WebUtility.UrlEncode(clientId)}&" +
-                    $"client_secret={WebUtility.UrlEncode(clientSecret)}";
+            var url = $"{loginurl}/{tenantId}/oauth2/token?api-version=1.0";
+            var data =
+                $"grant_type=client_credentials&" +
+                $"resource={WebUtility.UrlEncode(managementurlForAuth)}&" +
+                $"client_id={WebUtility.UrlEncode(clientId)}&" +
+                $"client_secret={WebUtility.UrlEncode(clientSecret)}";
 
-                dynamic result = await PostHttpStringAsync(client, url, data, "application/x-www-form-urlencoded");
-                return result.access_token.Value;
-            }
+            dynamic result = await PostHttpStringAsync(client, url, data, "application/x-www-form-urlencoded");
+            return result.access_token.Value;
         }
 
         async Task<JObject> GetHttpJObjectAsync(HttpClient client, string url, HttpStatusCode[] semiAcceptableStatusCodes, Func<string, string> retryFunc, string tenantId, string clientId, string clientSecret)
@@ -318,24 +314,23 @@ namespace GetAzureCosts
                 try
                 {
                     Log($"Getting (try {tries}): '{retryUrl}'");
-                    using (var response = await client.GetAsync(retryUrl))
-                    {
-                        result = await response.Content.ReadAsStringAsync();
-                        if (semiAcceptableStatusCodes != null && semiAcceptableStatusCodes.Contains(response.StatusCode))
-                        {
-                            return null;
-                        }
+                    using var response = await client.GetAsync(retryUrl);
 
-                        if (response.StatusCode == HttpStatusCode.Unauthorized)
-                        {
-                            Log("Renewing access token.");
-                            var accessToken = await GetAzureAccessTokenAsync(tenantId, clientId, clientSecret);
-                            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-                        }
-                        else
-                        {
-                            response.EnsureSuccessStatusCode();
-                        }
+                    result = await response.Content.ReadAsStringAsync();
+                    if (semiAcceptableStatusCodes != null && semiAcceptableStatusCodes.Contains(response.StatusCode))
+                    {
+                        return null;
+                    }
+
+                    if (response.StatusCode == HttpStatusCode.Unauthorized)
+                    {
+                        Log("Renewing access token.");
+                        var accessToken = await GetAzureAccessTokenAsync(tenantId, clientId, clientSecret);
+                        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                    }
+                    else
+                    {
+                        response.EnsureSuccessStatusCode();
                     }
 
                     if (result.Length > 0)
@@ -381,7 +376,7 @@ namespace GetAzureCosts
 
             if (newContent.Length >= 2 && newContent.StartsWith("\"") && newContent.EndsWith("\""))
             {
-                newContent = newContent.Substring(1, newContent.Length - 2);
+                newContent = newContent[1..^1];
             }
 
             newContent = newContent.Replace(@"\r", "\r").Replace(@"\n", "\n");
@@ -391,23 +386,21 @@ namespace GetAzureCosts
 
         async Task<JObject> PostHttpStringAsync(HttpClient client, string url, string content, string contenttype)
         {
-            using (var stringContent = new StringContent(content, Encoding.UTF8, contenttype))
-            {
-                string result;
-                using (var response = await client.PostAsync(url, stringContent))
-                {
-                    response.EnsureSuccessStatusCode();
-                    result = await response.Content.ReadAsStringAsync();
-                }
+            using var stringContent = new StringContent(content, Encoding.UTF8, contenttype);
 
-                if (result.Length > 0)
+            string result;
+            using var response = await client.PostAsync(url, stringContent);
+
+            response.EnsureSuccessStatusCode();
+            result = await response.Content.ReadAsStringAsync();
+
+            if (result.Length > 0)
+            {
+                if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("RestDebug")))
                 {
-                    if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("RestDebug")))
-                    {
-                        File.WriteAllText($"result_{Logcount++}.json", JToken.Parse(result).ToString());
-                    }
-                    return JObject.Parse(result);
+                    File.WriteAllText($"result_{Logcount++}.json", JToken.Parse(result).ToString());
                 }
+                return JObject.Parse(result);
             }
 
             return null;
@@ -426,7 +419,7 @@ namespace GetAzureCosts
                 {
                     if (json.Length >= 2)
                     {
-                        jobject = JObject.Parse(Regex.Unescape(json.Substring(1, json.Length - 2)));
+                        jobject = JObject.Parse(Regex.Unescape(json[1..^1]));
                         return true;
                     }
                 }
